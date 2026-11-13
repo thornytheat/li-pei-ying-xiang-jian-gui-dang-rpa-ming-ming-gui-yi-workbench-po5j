@@ -52,6 +52,7 @@
 
 1. **配置**：命名规则按版本落库（模板 + 冲突策略 + 日期来源）；3 个投件源（共享盘/邮箱/移动盘）与计数。
 2. **运行/采集**：发起归档批次（试运行 / 正式归档），批次记录扫描、新增、归档、重复、待确认、未识别、未变、人工计数与逐行日志。
+   正式归档**逐件提交并记录 checkpoint**：落盘中途失败时批次置为「已中断（可续跑）」，已确认落盘的材料在续跑批次里按 `reused` 复用原结果（不重复写盘、不覆盖同名材料），台账已归档但文件缺失的按 `repaired` 补写，未处理件继续归档；页面展示批次断点、逐件处理结果与恢复情况，并支持归档目录 × 批次台账的逐件只读对账。
 3. **解析/计算**：算法 1 材料类型识别（四路特征加权），算法 2 命名归一与冲突消解（SHA-256 判重复、序号递增）。
 4. **复核/归因**：待确认队列（低置信 7 件 / 未识别 4 件），逐件看候选分数与分类依据，人工改判并补保单号。
 5. **导出**：移交清单 CSV（按案件 60 行）+ 稽核清单 CSV（审计日志），都写审计。
@@ -63,7 +64,7 @@
 | `/login` | 登录 | 借阅登记单；三个演示账号可一键回填 |
 | `/cases` | 案件工作台 | 待收件/已归档/异常三个抽屉 + 材料分布 SVG + 异常抽屉 + 投件源 |
 | `/cases/:id` | 案件详情 | 应收材料清单 + 附件逐件「原名 → 归档名」对照 + 分类依据四路特征条 |
-| `/rules` | 命名规则与归档批次 | 模板编辑/预览/版本历史 + 发起批次 + 批次台账/日志 + 投件源 + 最近审计 |
+| `/rules` | 命名规则与归档批次 | 模板编辑/预览/版本历史 + 发起批次/断点续跑 + 批次台账/断点明细/日志 + 归档目录逐件对账 + 投件源 + 最近审计 |
 | `/pending` | 待确认队列 | 低置信/未识别队列 + 人工改判 + 两个 CSV 导出 |
 
 ### 算法（后端 Python 真算，前端只展示回传值）
@@ -89,6 +90,18 @@ score(类型) = 0.45×文件名关键词 + 0.35×内容抽样关键词 + 0.15×�
 
 **seed 契约**：`SEED_SUMMARY brand=docflow cases=60 attachments=210 duplicates=9 pending=7 rules=1 users=3`
 其中 `duplicates` = 同案件同 SHA-256 的多余份数、`pending` = seed 阶段低置信件数，二者都不随批次执行变化，因此归档后再跑 seed 仍是同一行。
+
+**断点续跑与对账（正式归档专属，试运行不产生断点）**
+
+- 落盘采用「同目录临时文件 + 原子 rename」，目标名已存在且内容不同时直接报错、**绝不覆盖同名材料**；
+- 每件材料先安全落盘、再回写附件状态并把结果写进批次 `checkpoint`（逐件提交），因此中断时已落盘件与台账严格一致，断点停在最后一件已提交的扫描序号；
+- 批次状态新增 `interrupted`（已中断/可续跑）：扫描前失败仍为 `failed`（无件可恢复），处理过至少一件后失败为 `interrupted`；
+- 续跑生成**新批次**并以 `resumed_from_id` 回指中断批次，沿用其规则版本与模板快照：
+  已确认落盘的件 → `reused`（复用原结果，零次写盘）；台账已归档但目录缺文件 → `repaired`（补写）；其余未处理件正常归档；
+- 单件结果（`checkpoint`）：`archived` 本批落盘 / `reused` 已恢复复用 / `repaired` 补写恢复 / `duplicate` 重复件 / `pending` 待确认 / `unknown` 未识别 / `untouched` 未处理 / `unchanged` 已归档未变；
+- 对账接口只读比对归档目录与台账，输出 `matched` / `ledger_only`（台账有目录缺）/ `content_mismatch`（SHA-256 不符）/ `name_mismatch`（同名归属冲突）/ `orphan_file`（目录有台账缺），不修改任何真实目录或台账数据。
+
+相关接口：`POST /api/runs/{id}/resume`（续跑）、`GET /api/runs/{id}/items`（断点与逐件进度）、`GET /api/runs/reconcile`（逐件对账）。
 
 ---
 
@@ -221,11 +234,11 @@ gb-580/
 
 ## 8. 枚举出现位置（前后端各一份）
 
-**前端** `frontend/src/constants/enums.ts`：`MATERIAL_TYPES` / `MATERIAL_LABELS` / `MATERIAL_SHORT`、`CASE_STATUSES` / `CASE_STATUS_LABELS`、`ATTACHMENT_STATUSES` / `ATTACHMENT_STATUS_LABELS`、`RUN_STATUSES` / `RUN_STATUS_LABELS`、`RUN_MODES` / `RUN_MODE_LABELS`、`INSURANCE_TYPES` / `INSURANCE_LABELS`、`SOURCE_LABELS` / `SOURCE_SHORT`、`FEATURE_WEIGHTS`、`TEMPLATE_TOKENS`。
-引用点：`types/domain.ts`、`components/common/{StatusStamp,MaterialTag,DistributionBar,ConfirmAttachmentDialog}.vue`、`pages/{CaseWorkbenchPage,CaseDetailPage,PendingQueuePage,RulesRunsPage}.vue`、`stores/*`、`api/*`。
+**前端** `frontend/src/constants/enums.ts`：`MATERIAL_TYPES` / `MATERIAL_LABELS` / `MATERIAL_SHORT`、`CASE_STATUSES` / `CASE_STATUS_LABELS`、`ATTACHMENT_STATUSES` / `ATTACHMENT_STATUS_LABELS`、`RUN_STATUSES`（含 `interrupted`）/ `RUN_STATUS_LABELS`、`RUN_ITEM_OUTCOMES` / `RUN_ITEM_OUTCOME_LABELS`、`RECONCILE_STATUSES` / `RECONCILE_STATUS_LABELS`、`RUN_MODES` / `RUN_MODE_LABELS`、`INSURANCE_TYPES` / `INSURANCE_LABELS`、`SOURCE_LABELS` / `SOURCE_SHORT`、`FEATURE_WEIGHTS`、`TEMPLATE_TOKENS`。
+引用点：`types/domain.ts`、`components/common/{StatusStamp,MaterialTag,DistributionBar,ConfirmAttachmentDialog,RunCheckpointPanel,ReconcilePanel}.vue`、`pages/{CaseWorkbenchPage,CaseDetailPage,PendingQueuePage,RulesRunsPage}.vue`、`stores/*`、`api/*`。
 
-**后端** `backend/src/constants/enums.py`：`MaterialType`、`CaseStatus`、`AttachmentStatus`、`RunStatus`、`RunMode`、`InsuranceType`、`IngestSource` + 各 `*_LABELS` + `EXPECTED_MATERIALS` + `FEATURE_WEIGHTS`。
-引用点：`services/material_classifier.py`、`services/naming_engine.py`、`services/archive_service.py`、`services/case_service.py`、`services/pending_service.py`、`services/export_service.py`、`services/run_service.py`、`models/*`、`schemas/*`、`scripts/seed_demo.py`、`scripts/fixtures.py`。
+**后端** `backend/src/constants/enums.py`：`MaterialType`、`CaseStatus`、`AttachmentStatus`、`RunStatus`（含 `INTERRUPTED`）、`RunItemOutcome`、`ReconcileStatus`、`RunMode`、`InsuranceType`、`IngestSource` + 各 `*_LABELS` + `EXPECTED_MATERIALS` + `FEATURE_WEIGHTS`。
+引用点：`services/material_classifier.py`、`services/naming_engine.py`、`services/archive_service.py`、`services/reconcile_service.py`、`services/case_service.py`、`services/pending_service.py`、`services/export_service.py`、`services/run_service.py`、`models/*`、`schemas/*`、`scripts/seed_demo.py`、`scripts/fixtures.py`。
 
 **角色枚举**：前端 `frontend/src/constants/roles.ts` ↔ 后端 `backend/src/constants/roles.py`（`admin` / `analyst` / `auditor` + 权限矩阵）。
 

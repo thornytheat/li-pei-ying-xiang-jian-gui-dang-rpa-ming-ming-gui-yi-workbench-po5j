@@ -295,7 +295,7 @@ watch(
   () => runs.selected?.status,
   async (status) => {
     if (!status) return
-    if (status === 'succeeded' || status === 'failed') {
+    if (status === 'succeeded' || status === 'failed' || status === 'interrupted') {
       const run = runs.selected
       if (run) {
         runNote.value = `批次 ${run.run_no} ${run.status_label}：扫描 ${run.scanned} · 归档 ${run.archived} · 重复 ${run.duplicate} · 待确认 ${run.pending} · 未识别 ${run.unknown}`

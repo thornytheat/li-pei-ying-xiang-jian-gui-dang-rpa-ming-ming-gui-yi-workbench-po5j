@@ -158,7 +158,7 @@
             <span v-if="!canRun" class="tiny">当前角色无权发起批次</span>
           </div>
           <p class="tiny note-line">
-            试运行只统计不落盘；正式归档会把副本按模板改名写进归档卷，重复件只标记不落盘。
+            试运行只统计不落盘；正式归档逐件提交并记录断点，中途失败可续跑，已落盘材料复用不重复写盘，重复件只标记不落盘。
           </p>
         </div>
       </div>
@@ -184,12 +184,17 @@
                 <span>{{ run.mode_label }}</span>
                 <span>v{{ run.rule_version }}</span>
                 <span class="mono">{{ run.triggered_by_email }}</span>
+                <span v-if="run.resumed_from_id" class="tag tag--green">续跑批次</span>
               </div>
               <div class="run-list__counts mono">
                 <span>扫 {{ run.scanned }}</span>
                 <span>归 {{ run.archived }}</span>
                 <span>重 {{ run.duplicate }}</span>
                 <span>待 {{ run.pending }}</span>
+              </div>
+              <div v-if="run.status === 'interrupted'" class="run-list__break tiny">
+                中断于序号 {{ String(run.checkpoint_seq).padStart(3, '0') }} · 已处理
+                {{ run.checkpoint_processed }} / 待处理 {{ run.checkpoint_untouched }}
               </div>
             </li>
           </ul>
@@ -203,6 +208,27 @@
           <span class="tiny">{{ runs.selected.mode_label }} · {{ runs.selected.status_label }}</span>
         </div>
         <div class="panel-body stack">
+          <div v-if="runs.selected.resumable" class="resume-banner">
+            <div class="stack">
+              <p class="tiny">
+                批次在扫描序号
+                <span class="mono">{{ String(runs.selected.checkpoint_seq).padStart(3, '0') }}</span>
+                后中断：已落盘 {{ runs.selected.checkpoint_processed }} 件可直接复用，
+                剩余 {{ runs.selected.checkpoint_untouched }} 件续跑处理，不会重复落盘或覆盖同名材料。
+              </p>
+              <div class="row">
+                <button
+                  type="button"
+                  class="btn btn--seal btn--small"
+                  :disabled="!canRun || starting || runs.busy"
+                  @click="resumeSelected"
+                >
+                  {{ starting ? '提交中…' : '从断点续跑此批次' }}
+                </button>
+                <span v-if="!canRun" class="tiny">当前角色无权发起批次</span>
+              </div>
+            </div>
+          </div>
           <dl class="run-counters">
             <div><dt>扫描</dt><dd class="mono">{{ runs.selected.scanned }}</dd></div>
             <div><dt>新增</dt><dd class="mono">{{ runs.selected.new_files }}</dd></div>
@@ -212,10 +238,17 @@
             <div><dt>未识别</dt><dd class="mono">{{ runs.selected.unknown }}</dd></div>
             <div><dt>未变</dt><dd class="mono">{{ runs.selected.unchanged }}</dd></div>
             <div><dt>人工</dt><dd class="mono">{{ runs.selected.manual }}</dd></div>
+            <div v-if="runs.selected.reused_count">
+              <dt>复用</dt><dd class="mono ok-line">{{ runs.selected.reused_count }}</dd>
+            </div>
+            <div v-if="runs.selected.repaired_count">
+              <dt>补写</dt><dd class="mono ok-line">{{ runs.selected.repaired_count }}</dd>
+            </div>
           </dl>
           <p class="tiny run-status-line">
             由 {{ runs.selected.triggered_by_email }} 发起 · {{ formatDuration(runs.selected.duration_ms) }} ·
             落盘 {{ runs.selected.stored_files ?? runs.storedFiles }} 个文件
+            <template v-if="runs.selected.resumed_from_id"> · 续跑批次（回指中断批次）</template>
           </p>
           <div class="run-log">
             <p v-for="line in runs.selected.log" :key="line" class="mono">{{ line }}</p>
@@ -223,6 +256,9 @@
           </div>
         </div>
       </div>
+
+      <RunCheckpointPanel />
+      <ReconcilePanel />
 
       <div class="slip">
         <div class="panel-head"><h3>投件源</h3></div>
@@ -264,6 +300,8 @@ import ErrorNotice from '../components/common/ErrorNotice.vue'
 import FolderTabs from '../components/common/FolderTabs.vue'
 import type { FolderTab } from '../types/ui'
 import PageHeader from '../components/common/PageHeader.vue'
+import ReconcilePanel from '../components/common/ReconcilePanel.vue'
+import RunCheckpointPanel from '../components/common/RunCheckpointPanel.vue'
 import StatusStamp from '../components/common/StatusStamp.vue'
 import { fetchAudit, type AuditEntry } from '../api/audit'
 import { EMPTY_HINTS } from '../constants/messages'
@@ -352,13 +390,31 @@ async function startRun() {
   }
 }
 
+async function resumeSelected() {
+  const target = runs.selected
+  if (!target) return
+  starting.value = true
+  runNote.value = ''
+  try {
+    const run = await runs.resume(target.id, `断点续跑：${target.run_no}`)
+    runNote.value = `续跑批次 ${run.run_no} 已提交：已落盘材料复用原结果，未处理件继续归档`
+  } catch (error) {
+    runNote.value = (error as { message?: string }).message ?? '续跑发起失败'
+  } finally {
+    starting.value = false
+  }
+}
+
 watch(
   () => runs.selected?.status,
   async (status) => {
-    if (status === 'succeeded' || status === 'failed') {
+    if (status === 'succeeded' || status === 'failed' || status === 'interrupted') {
       const run = runs.selected
       if (run) {
-        runNote.value = `批次 ${run.run_no} ${run.status_label}：扫描 ${run.scanned} · 归档 ${run.archived} · 重复 ${run.duplicate} · 待确认 ${run.pending} · 未识别 ${run.unknown}`
+        runNote.value =
+          status === 'interrupted'
+            ? `批次 ${run.run_no} 已中断于序号 ${String(run.checkpoint_seq).padStart(3, '0')}：可从断点续跑，已落盘件不重复写盘`
+            : `批次 ${run.run_no} ${run.status_label}：扫描 ${run.scanned} · 归档 ${run.archived} · 重复 ${run.duplicate} · 待确认 ${run.pending} · 未识别 ${run.unknown}`
       }
       await cases.loadSources()
     }
@@ -497,6 +553,26 @@ onBeforeUnmount(() => runs.stopPoll())
   gap: 12px;
   font-size: 0.72rem;
   color: var(--ink-2);
+}
+
+.run-list__break {
+  margin-top: 5px;
+  color: var(--warn);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.resume-banner {
+  border: 1px solid var(--warn);
+  background: var(--warn-soft);
+  padding: 10px 12px;
+}
+
+.resume-banner .tiny {
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.6;
+  margin: 0 0 8px;
 }
 
 .run-counters {

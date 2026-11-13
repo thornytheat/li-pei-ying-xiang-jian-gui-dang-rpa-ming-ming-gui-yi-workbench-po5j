@@ -43,6 +43,30 @@ class RunStatus(str, Enum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    INTERRUPTED = "interrupted"  # 落盘中途失败：已处理件可复用，支持断点续跑
+
+
+class RunItemOutcome(str, Enum):
+    """批次内单件处理结果（写入批次 checkpoint，供断点续跑与逐件对账）。"""
+
+    ARCHIVED = "archived"        # 本次落盘成功
+    DUPLICATE = "duplicate"      # 重复件，不落盘
+    PENDING = "pending"          # 待人工确认
+    UNKNOWN = "unknown"          # 未识别
+    UNTOUCHED = "untouched"      # 中断点之后，本批次尚未处理
+    REUSED = "reused"            # 续跑时复用已确认落盘的结果，不重复写盘
+    REPAIRED = "repaired"        # 续跑时发现台账已归档但文件缺失，补写落盘
+    UNCHANGED = "unchanged"      # 此前已归档，本批次只计数未改动
+
+
+class ReconcileStatus(str, Enum):
+    """归档目录与批次台账逐件对账结果。"""
+
+    MATCHED = "matched"          # 台账与落盘文件一致（含内容哈希）
+    LEDGER_ONLY = "ledger_only"  # 台账有记录、目录无文件（落盘丢失）
+    ORPHAN_FILE = "orphan_file"  # 目录有文件、台账无记录（无人认领的落盘）
+    CONTENT_MISMATCH = "content_mismatch"  # 文件存在但内容哈希与台账不符
+    NAME_MISMATCH = "name_mismatch"        # 同一档案名被另一个附件占用
 
 
 class RunMode(str, Enum):
@@ -107,7 +131,27 @@ RUN_STATUS_LABELS: dict[str, str] = {
     RunStatus.QUEUED.value: "排队中",
     RunStatus.RUNNING.value: "执行中",
     RunStatus.SUCCEEDED.value: "已完成",
+    RunStatus.INTERRUPTED.value: "已中断（可续跑）",
     RunStatus.FAILED.value: "失败",
+}
+
+RUN_ITEM_OUTCOME_LABELS: dict[str, str] = {
+    RunItemOutcome.ARCHIVED.value: "本批落盘",
+    RunItemOutcome.DUPLICATE.value: "重复件",
+    RunItemOutcome.PENDING.value: "待确认",
+    RunItemOutcome.UNKNOWN.value: "未识别",
+    RunItemOutcome.UNTOUCHED.value: "未处理",
+    RunItemOutcome.REUSED.value: "已恢复复用",
+    RunItemOutcome.REPAIRED.value: "补写恢复",
+    RunItemOutcome.UNCHANGED.value: "已归档未变",
+}
+
+RECONCILE_STATUS_LABELS: dict[str, str] = {
+    ReconcileStatus.MATCHED.value: "账实一致",
+    ReconcileStatus.LEDGER_ONLY.value: "台账有、目录缺",
+    ReconcileStatus.ORPHAN_FILE.value: "目录有、台账缺",
+    ReconcileStatus.CONTENT_MISMATCH.value: "内容不一致",
+    ReconcileStatus.NAME_MISMATCH.value: "命名冲突",
 }
 
 RUN_MODE_LABELS: dict[str, str] = {

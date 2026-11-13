@@ -2,8 +2,18 @@ import type { MaterialType } from '../constants/enums'
 
 export type CaseStatus = 'pending_docs' | 'archived' | 'exception'
 export type AttachmentStatus = 'classified' | 'pending' | 'unknown' | 'archived' | 'duplicate'
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'interrupted' | 'failed'
 export type RunMode = 'dry_run' | 'archive'
+export type RunItemOutcome =
+  | 'archived'
+  | 'duplicate'
+  | 'pending'
+  | 'unknown'
+  | 'untouched'
+  | 'reused'
+  | 'repaired'
+  | 'unchanged'
+export type ReconcileStatus = 'matched' | 'ledger_only' | 'orphan_file' | 'content_mismatch' | 'name_mismatch'
 export type InsuranceType = 'medical' | 'critical' | 'accident' | 'auto' | 'life'
 
 export interface MaterialRef {
@@ -91,6 +101,8 @@ export interface RunItem {
   mode_label: string
   status: RunStatus
   status_label: string
+  resumable: boolean
+  resumed_from_id: string | null
   rule_version: number
   template_snapshot: string
   triggered_by_email: string
@@ -105,12 +117,73 @@ export interface RunItem {
   failed: number
   manual: number
   auto_named: number
+  checkpoint_seq: number
+  checkpoint_processed: number
+  checkpoint_untouched: number
+  reused_count: number
+  repaired_count: number
   log: string[]
   started_at: string | null
   finished_at: string | null
   duration_ms: number
   created_at: string | null
   stored_files?: number
+}
+
+export interface RunCheckpointItem {
+  attachment_id: string
+  scan_seq: number
+  source_code: string
+  original_name: string
+  stored_name: string | null
+  material_type: MaterialType
+  status: AttachmentStatus
+  outcome: RunItemOutcome
+  outcome_label: string
+  sha256_short: string
+  sequence_no: number | null
+  in_checkpoint: boolean
+}
+
+export interface RunItemsResult {
+  run_id: string
+  run_no: string
+  status: RunStatus
+  checkpoint_seq: number
+  outcome_tally: Partial<Record<RunItemOutcome, number>>
+  items: RunCheckpointItem[]
+}
+
+export interface ReconcileSummary {
+  matched: number
+  ledger_only: number
+  content_mismatch: number
+  name_mismatch: number
+  orphan_file: number
+  ledger_archived: number
+  disk_files: number
+  issue_total: number
+  clean: boolean
+}
+
+export interface ReconcileRow {
+  kind: 'ledger' | 'disk'
+  status: ReconcileStatus
+  attachment_id: string | null
+  scan_seq: number | null
+  original_name: string
+  stored_name: string
+  material_type: string
+  material_label: string
+  ledger_sha256: string
+  disk_sha256: string
+  last_run_id: string | null
+  detail: string
+}
+
+export interface ReconcileReport {
+  summary: ReconcileSummary
+  rows: ReconcileRow[]
 }
 
 export interface RuleItem {

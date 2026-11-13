@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from src.models.user import User
-from src.schemas.run import RunCreateRequest, RunOut
+from src.schemas.run import RunCreateRequest, RunOut, RunResumeRequest
 from src.services import run_service
 
 
@@ -21,5 +21,18 @@ def create_run(db: Session, payload: RunCreateRequest, user: User) -> dict:
     return RunOut(**run).model_dump()
 
 
+def resume_run(db: Session, run_id: str, payload: RunResumeRequest, user: User) -> dict:
+    run = run_service.resume_run(db, user=user, run_id=run_id, note=payload.note)
+    return RunOut(**run).model_dump()
+
+
 def detail(db: Session, run_id: str) -> dict:
     return RunOut(**run_service.get_run(db, run_id)).model_dump()
+
+
+def items(db: Session, run_id: str) -> dict:
+    return run_service.list_run_items(db, run_id)
+
+
+def reconcile(db: Session, user: User) -> dict:
+    return run_service.reconcile(db, user=user)

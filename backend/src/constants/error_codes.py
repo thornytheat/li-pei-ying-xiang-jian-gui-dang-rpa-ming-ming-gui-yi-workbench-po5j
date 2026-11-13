@@ -16,6 +16,7 @@ RULE_VERSION_CONFLICT = "RULE_VERSION_CONFLICT"
 RUN_NOT_READY = "RUN_NOT_READY"
 RUN_BUSY = "RUN_BUSY"
 RUN_FAILED = "RUN_FAILED"
+RUN_NOT_RESUMABLE = "RUN_NOT_RESUMABLE"
 RATE_LIMITED = "RATE_LIMITED"
 INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -35,6 +36,7 @@ HTTP_STATUS: dict[str, int] = {
     RUN_NOT_READY: 409,
     RUN_BUSY: 409,
     RUN_FAILED: 409,
+    RUN_NOT_RESUMABLE: 409,
     RATE_LIMITED: 429,
     INTERNAL_ERROR: 500,
 }
@@ -55,6 +57,7 @@ ERROR_MESSAGES: dict[str, str] = {
     RUN_NOT_READY: "批次尚未生成完成",
     RUN_BUSY: "已有批次正在执行，请稍后再发起",
     RUN_FAILED: "批次执行失败，请查看批次日志",
+    RUN_NOT_RESUMABLE: "只有已中断的正式归档批次可以续跑",
     RATE_LIMITED: "请求过于频繁，请稍后重试",
     INTERNAL_ERROR: "服务内部错误",
 }

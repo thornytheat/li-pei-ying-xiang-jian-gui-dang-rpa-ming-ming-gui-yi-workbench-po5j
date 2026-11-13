@@ -8,7 +8,7 @@ from src.controllers import run_controller
 from src.middlewares.rate_limit import rate_limit
 from src.middlewares.rbac import require_permission
 from src.models.user import User
-from src.schemas.run import RunCreateRequest
+from src.schemas.run import RunCreateRequest, RunResumeRequest
 
 router = APIRouter(tags=["runs"])
 
@@ -29,6 +29,33 @@ def create_run(
     user: User = Depends(require_permission("runs:create")),
 ) -> dict:
     return run_controller.create_run(db, payload, user)
+
+
+@router.get("/runs/reconcile")
+def reconcile(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("runs:read")),
+) -> dict:
+    return run_controller.reconcile(db, user)
+
+
+@router.post("/runs/{run_id}/resume", dependencies=[rate_limit("run")])
+def resume_run(
+    run_id: str,
+    payload: RunResumeRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("runs:create")),
+) -> dict:
+    return run_controller.resume_run(db, run_id, payload, user)
+
+
+@router.get("/runs/{run_id}/items")
+def run_items(
+    run_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("runs:read")),
+) -> dict:
+    return run_controller.items(db, run_id)
 
 
 @router.get("/runs/{run_id}")

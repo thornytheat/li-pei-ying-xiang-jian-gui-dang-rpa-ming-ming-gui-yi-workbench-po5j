@@ -1,6 +1,18 @@
 import { defineStore } from 'pinia'
-import { createRun, fetchRun, fetchRuns } from '../api/runs'
-import type { RunItem, RunMode } from '../types/domain'
+import {
+  createRun,
+  fetchReconcile,
+  fetchRun,
+  fetchRunItems,
+  fetchRuns,
+  resumeRun,
+} from '../api/runs'
+import type {
+  ReconcileReport,
+  RunItem,
+  RunItemsResult,
+  RunMode,
+} from '../types/domain'
 
 interface RunsState {
   items: RunItem[]
@@ -10,6 +22,10 @@ interface RunsState {
   starting: boolean
   error: string
   pollTimer: number | null
+  checkpoint: RunItemsResult | null
+  checkpointLoading: boolean
+  reconcileReport: ReconcileReport | null
+  reconcileLoading: boolean
 }
 
 export const useRunsStore = defineStore('runs', {
@@ -21,6 +37,10 @@ export const useRunsStore = defineStore('runs', {
     starting: false,
     error: '',
     pollTimer: null,
+    checkpoint: null,
+    checkpointLoading: false,
+    reconcileReport: null,
+    reconcileLoading: false,
   }),
   getters: {
     latest: (state): RunItem | null => state.items[0] ?? null,
@@ -48,6 +68,7 @@ export const useRunsStore = defineStore('runs', {
     },
     select(run: RunItem | null) {
       this.selected = run
+      this.checkpoint = null
     },
     async start(mode: RunMode, note: string) {
       this.starting = true
@@ -65,6 +86,42 @@ export const useRunsStore = defineStore('runs', {
         this.starting = false
       }
     },
+    async resume(runId: string, note = '') {
+      this.starting = true
+      this.error = ''
+      try {
+        const run = await resumeRun(runId, note)
+        this.selected = run
+        await this.load()
+        this.poll(run.id)
+        return run
+      } catch (error) {
+        this.error = (error as { message?: string }).message ?? '续跑发起失败'
+        throw error
+      } finally {
+        this.starting = false
+      }
+    },
+    async loadCheckpoint(runId: string) {
+      this.checkpointLoading = true
+      try {
+        this.checkpoint = await fetchRunItems(runId)
+      } catch (error) {
+        this.error = (error as { message?: string }).message ?? '断点明细加载失败'
+      } finally {
+        this.checkpointLoading = false
+      }
+    },
+    async loadReconcile() {
+      this.reconcileLoading = true
+      try {
+        this.reconcileReport = await fetchReconcile()
+      } catch (error) {
+        this.error = (error as { message?: string }).message ?? '对账加载失败'
+      } finally {
+        this.reconcileLoading = false
+      }
+    },
     poll(runId: string) {
       if (this.pollTimer) window.clearTimeout(this.pollTimer)
       const tick = async () => {
@@ -77,6 +134,7 @@ export const useRunsStore = defineStore('runs', {
           } else {
             this.pollTimer = null
             await this.load()
+            if (this.selected?.id === runId) await this.loadCheckpoint(runId)
           }
         } catch {
           this.pollTimer = null

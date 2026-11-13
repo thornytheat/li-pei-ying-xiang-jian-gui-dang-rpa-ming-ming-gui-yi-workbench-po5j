@@ -14,6 +14,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   RUN_NOT_READY: '批次尚未生成完成',
   RUN_BUSY: '已有批次正在执行，请稍后再发起',
   RUN_FAILED: '批次执行失败，请查看批次日志',
+  RUN_NOT_RESUMABLE: '只有已中断的正式归档批次可以续跑',
   RATE_LIMITED: '请求过于频繁，请稍后重试',
   INTERNAL_ERROR: '服务内部错误',
 }

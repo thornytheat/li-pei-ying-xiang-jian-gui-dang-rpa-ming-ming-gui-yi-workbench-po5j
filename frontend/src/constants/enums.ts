@@ -42,14 +42,55 @@ export const ATTACHMENT_STATUS_LABELS: Record<AttachmentStatusKey, string> = {
   duplicate: '重复件',
 }
 
-export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const
+export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'interrupted', 'failed'] as const
 export type RunStatusKey = (typeof RUN_STATUSES)[number]
 
 export const RUN_STATUS_LABELS: Record<RunStatusKey, string> = {
   queued: '排队中',
   running: '执行中',
   succeeded: '已完成',
+  interrupted: '已中断（可续跑）',
   failed: '失败',
+}
+
+export const RUN_ITEM_OUTCOMES = [
+  'archived',
+  'duplicate',
+  'pending',
+  'unknown',
+  'untouched',
+  'reused',
+  'repaired',
+  'unchanged',
+] as const
+export type RunItemOutcomeKey = (typeof RUN_ITEM_OUTCOMES)[number]
+
+export const RUN_ITEM_OUTCOME_LABELS: Record<RunItemOutcomeKey, string> = {
+  archived: '本批落盘',
+  duplicate: '重复件',
+  pending: '待确认',
+  unknown: '未识别',
+  untouched: '未处理',
+  reused: '已恢复复用',
+  repaired: '补写恢复',
+  unchanged: '已归档未变',
+}
+
+export const RECONCILE_STATUSES = [
+  'matched',
+  'ledger_only',
+  'orphan_file',
+  'content_mismatch',
+  'name_mismatch',
+] as const
+export type ReconcileStatusKey = (typeof RECONCILE_STATUSES)[number]
+
+export const RECONCILE_STATUS_LABELS: Record<ReconcileStatusKey, string> = {
+  matched: '账实一致',
+  ledger_only: '台账有、目录缺',
+  orphan_file: '目录有、台账缺',
+  content_mismatch: '内容不一致',
+  name_mismatch: '命名冲突',
 }
 
 export const RUN_MODES = ['dry_run', 'archive'] as const

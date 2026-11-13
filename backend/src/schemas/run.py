@@ -15,6 +15,8 @@ class RunOut(BaseModel):
     mode_label: str
     status: str
     status_label: str
+    resumable: bool = False
+    resumed_from_id: str | None = None
     rule_version: int
     template_snapshot: str
     triggered_by_email: str = ""
@@ -29,6 +31,11 @@ class RunOut(BaseModel):
     failed: int = 0
     manual: int = 0
     auto_named: int = 0
+    checkpoint_seq: int = 0
+    checkpoint_processed: int = 0
+    checkpoint_untouched: int = 0
+    reused_count: int = 0
+    repaired_count: int = 0
     log: list[str] = []
     started_at: str | None = None
     finished_at: str | None = None
@@ -38,4 +45,8 @@ class RunOut(BaseModel):
 
 class RunCreateRequest(BaseModel):
     mode: Literal["dry_run", "archive"] = "archive"
+    note: str = Field(default="", max_length=200)
+
+
+class RunResumeRequest(BaseModel):
     note: str = Field(default="", max_length=200)

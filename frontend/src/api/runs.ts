@@ -1,5 +1,10 @@
 import http from './http'
-import type { RunItem, RunMode } from '../types/domain'
+import type {
+  ReconcileReport,
+  RunItem,
+  RunItemsResult,
+  RunMode,
+} from '../types/domain'
 
 export interface RunListResult {
   items: RunItem[]
@@ -19,5 +24,20 @@ export async function createRun(mode: RunMode, note = ''): Promise<RunItem> {
 
 export async function fetchRun(runId: string): Promise<RunItem> {
   const { data } = await http.get<RunItem>(`/runs/${runId}`)
+  return data
+}
+
+export async function resumeRun(runId: string, note = ''): Promise<RunItem> {
+  const { data } = await http.post<RunItem>(`/runs/${runId}/resume`, { note })
+  return data
+}
+
+export async function fetchRunItems(runId: string): Promise<RunItemsResult> {
+  const { data } = await http.get<RunItemsResult>(`/runs/${runId}/items`)
+  return data
+}
+
+export async function fetchReconcile(): Promise<ReconcileReport> {
+  const { data } = await http.get<ReconcileReport>('/runs/reconcile')
   return data
 }

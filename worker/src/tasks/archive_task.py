@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from src.config.database import session_scope
+from src.constants.enums import RunItemOutcome, RunStatus
 from src.models.archive_run import ArchiveRun
-from src.services import archive_service
+from src.services import archive_service, run_service
 from src.utils.logger import get_logger
 from worker_src.config.celery_app import celery_app
 
@@ -18,15 +19,19 @@ def archive_run(self, run_id: str, mode: str = "archive") -> dict:
             logger.warning("run %s not found", run_id)
             return {"ok": False, "reason": "run_not_found", "run_id": run_id}
         archive_service.execute_run(db, run, mode=mode)
+        stats = run_service._checkpoint_stats(run)
         logger.info(
-            "run %s finished status=%s archived=%s duplicate=%s",
+            "run %s finished status=%s archived=%s duplicate=%s reused=%s repaired=%s",
             run.run_no,
             run.status,
             run.archived,
             run.duplicate,
+            stats.get(RunItemOutcome.REUSED.value, 0),
+            stats.get(RunItemOutcome.REPAIRED.value, 0),
         )
         return {
-            "ok": run.status == "succeeded",
+            "ok": run.status == RunStatus.SUCCEEDED.value,
+            "interrupted": run.status == RunStatus.INTERRUPTED.value,
             "run_no": run.run_no,
             "status": run.status,
             "scanned": run.scanned,
@@ -34,4 +39,7 @@ def archive_run(self, run_id: str, mode: str = "archive") -> dict:
             "duplicate": run.duplicate,
             "pending": run.pending,
             "unknown": run.unknown,
+            "checkpoint_seq": run.checkpoint_seq,
+            "reused": stats.get(RunItemOutcome.REUSED.value, 0),
+            "repaired": stats.get(RunItemOutcome.REPAIRED.value, 0),
         }
